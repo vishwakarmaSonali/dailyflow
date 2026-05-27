@@ -57,9 +57,9 @@ pnpm --filter=@dailyflow/expense-service run dev
 
 - [Setup Guide](./docs/SETUP.md) - Detailed setup instructions
 - [Architecture](./docs/ARCHITECTURE.md) - System design & patterns
-- [API Documentation](./docs/API.md) - REST endpoints
-- [Testing Strategy](./docs/TESTING.md) - Coverage & patterns
-- [Deployment](./docs/DEPLOYMENT.md) - Production checklist
+- [Code Quality](./docs/CODE-QUALITY.md) - Linting, formatting, testing standards
+- [Shared Packages](./docs/PACKAGES.md) - Using shared code across services
+- [Docker](./docs/DOCKER.md) - Local development with Docker
 
 ## 🗂️ Project Structure
 
@@ -90,26 +90,47 @@ dailyflow/
 
 ```bash
 # Run all tests
-pnpm test
+npm test
 
 # Run with coverage
-pnpm test:coverage
+npm test:coverage
 
 # Run specific service tests
-pnpm --filter=@dailyflow/habit-service test
+npm test -- apps/habit-service
 ```
+
+## 🎨 Code Quality
+
+```bash
+# Lint all code
+npm run lint
+
+# Fix linting issues
+npm run lint:fix
+
+# Format code
+npm run format
+
+# Check formatting
+npm run format:check
+```
+
+**Standards**:
+- ESLint for code quality
+- Prettier for consistent formatting
+- Husky for pre-commit validation
+- Commitlint for commit message validation
+
+See [CODE-QUALITY.md](./docs/CODE-QUALITY.md) for detailed guidelines.
 
 ## 📦 Build & Deploy
 
 ```bash
 # Build all services
-pnpm build
+npm run build
 
 # Build specific service
-pnpm --filter=@dailyflow/api-gateway build
-
-# Docker build
-docker build -t dailyflow-api-gateway apps/api-gateway/
+npm run build -- apps/api-gateway
 ```
 
 ## 🔄 Git Workflow
