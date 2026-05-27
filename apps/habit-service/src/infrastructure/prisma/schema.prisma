@@ -1,0 +1,32 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Habit {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  frequency   String    // daily, weekly, monthly
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([id, userId])
+}
+
+model HabitLog {
+  id        String   @id @default(cuid())
+  habitId   String
+  userId    String
+  logDate   DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([habitId, userId])
+  @@index([logDate])
+}
