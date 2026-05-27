@@ -1,0 +1,30 @@
+{
+  "name": "dailyflow",
+  "version": "0.1.0",
+  "description": "Enterprise personal productivity platform with microservices architecture",
+  "private": true,
+  "scripts": {
+    "preinstall": "npx only-allow pnpm",
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r --filter=\"./apps/**\" build",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "prepare": "husky install"
+  },
+  "keywords": [
+    "habit-tracking",
+    "expense-management",
+    "microservices",
+    "clean-architecture"
+  ],
+  "author": "DailyFlow Team",
+  "license": "MIT",
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "husky": "^8.0.0",
+    "commitlint": "^18.0.0"
+  }
+}
