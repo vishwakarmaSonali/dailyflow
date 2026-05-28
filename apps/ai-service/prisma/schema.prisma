@@ -1,0 +1,81 @@
+// Prisma schema for AI Service database
+// Manages caching for expensive API calls and event logs
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-py"
+}
+
+/// Cached receipt OCR results to avoid re-processing identical receipts
+model CachedOcrResult {
+  id            String   @id @default(cuid())
+  imageHash     String   @unique // SHA256 hash of image for deduplication
+  merchantName  String
+  amount        Float
+  currency      String
+  category      String
+  taxAmount     Float?
+  items         String[] // JSON array of items
+  confidence    Float
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime // Cache expiration (24 hours from now)
+
+  @@index([expiresAt]) // For cleanup queries
+  @@map("cached_ocr_results")
+}
+
+/// Cached spending and habit insights
+model CachedInsight {
+  id               String   @id @default(cuid())
+  userId           String
+  insightType      String   // HABIT_STREAK, SPENDING_TREND, BUDGET_ALERT, etc.
+  title            String
+  description      String
+  confidence       Float
+  actionableItems  String[] // JSON array of actionable items
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime // Cache expiration (12 hours from now)
+
+  @@index([userId, expiresAt]) // For user insights + cleanup
+  @@map("cached_insights")
+}
+
+/// Event processing log for debugging and retry logic
+model EventLog {
+  id           String   @id @default(cuid())
+  eventType    String   // expense:created, habit:logged, etc.
+  payload      Json     // Full event payload for replay
+  status       String   // PENDING, PROCESSING, PROCESSED, FAILED
+  retryCount   Int      @default(0)
+  maxRetries   Int      @default(3)
+  error        String?  // Error message if failed
+  createdAt    DateTime @default(now())
+  processedAt  DateTime? // When successfully processed
+  nextRetryAt  DateTime? // When to retry if failed
+
+  @@index([eventType, status]) // For querying by type and status
+  @@index([createdAt]) // For time-based queries
+  @@map("event_logs")
+}
+
+/// Anomaly detection cache
+model CachedAnomaly {
+  id              String   @id @default(cuid())
+  userId          String
+  category        String
+  isAnomalous     Boolean
+  expectedValue   Float
+  actualValue     Float
+  deviationPct    Float
+  severity        String   // LOW, MEDIUM, HIGH, CRITICAL
+  description     String
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime // Cache expiration (1 hour from now)
+
+  @@index([userId, category, expiresAt])
+  @@map("cached_anomalies")
+}
