@@ -1,0 +1,49 @@
+{
+  "name": "dailyflow-mobile",
+  "displayName": "DailyFlow",
+  "description": "Personal productivity app with habit tracking, expense management, and AI insights",
+  "version": "1.0.0",
+  "slug": "dailyflow-mobile",
+  "scheme": "dailyflow",
+  "platforms": ["ios", "android", "web"],
+  "sdkVersion": "50.0.0",
+  "icon": "./assets/icon.png",
+  "userInterfaceStyle": "automatic",
+  "splash": {
+    "image": "./assets/splash.png",
+    "resizeMode": "contain",
+    "backgroundColor": "#ffffff"
+  },
+  "updates": {
+    "fallbackToCacheTimeout": 0,
+    "url": "https://u.expo.dev/your-project-id"
+  },
+  "runtimeVersion": {
+    "policy": "appVersion"
+  },
+  "assetBundlePatterns": [
+    "**/*"
+  ],
+  "ios": {
+    "supportsTabletMode": true,
+    "bundleIdentifier": "com.dailyflow.mobile"
+  },
+  "android": {
+    "package": "com.dailyflow.mobile",
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/adaptive-icon.png",
+      "backgroundColor": "#ffffff"
+    }
+  },
+  "web": {
+    "favicon": "./assets/favicon.png"
+  },
+  "plugins": [
+    [
+      "expo-router",
+      {
+        "origin": "expo-router"
+      }
+    ]
+  ]
+}

@@ -12,6 +12,7 @@ from src.domain.anomaly_detector import AnomalyDetector
 from src.domain.insights_engine import InsightsEngine
 from src.infrastructure.config import get_settings
 from src.infrastructure.database import CacheRepository
+from src.infrastructure.event_publisher import EventPublisher
 from src.infrastructure.http.routes import create_router
 from src.infrastructure.redis import RedisClient
 from src.infrastructure.redis.event_consumer import EventConsumer
@@ -26,6 +27,7 @@ settings = get_settings()
 # Global instances
 redis_client: RedisClient | None = None
 event_consumer: EventConsumer | None = None
+event_publisher: EventPublisher | None = None
 cache_repository: CacheRepository | None = None
 event_consumer_task: asyncio.Task | None = None
 
@@ -36,7 +38,7 @@ async def lifespan(app: FastAPI):
     
     Handles startup and shutdown events, including event consumer.
     """
-    global redis_client, event_consumer, cache_repository, event_consumer_task
+    global redis_client, event_consumer, event_publisher, cache_repository, event_consumer_task
 
     # Startup
     logger.info(f"Starting AI Service on port {settings.port}")
@@ -49,6 +51,7 @@ async def lifespan(app: FastAPI):
         event_consumer = EventConsumer(settings)
         await event_consumer.connect()
 
+        event_publisher = EventPublisher(redis_client)
         cache_repository = CacheRepository(settings)
 
         # Register event handlers
