@@ -46,7 +46,8 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OPENAI_VISION_MODEL=${OPENAI_VISION_MODEL}
       - OPENAI_WHISPER_MODEL=${OPENAI_WHISPER_MODEL}
-      - REDIS_URL=${REDIS_URL}
+      - REDIS_URL=${REDIS_URL:-redis://dailyflow-redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@dailyflow-postgres:5432/dailyflow}
       - AUTH_SERVICE_URL=${AUTH_SERVICE_URL:-http://localhost:3001}
       - HABIT_SERVICE_URL=${HABIT_SERVICE_URL:-http://localhost:3002}
       - EXPENSE_SERVICE_URL=${EXPENSE_SERVICE_URL:-http://localhost:3003}
@@ -56,9 +57,17 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - dailyflow
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   dailyflow:
