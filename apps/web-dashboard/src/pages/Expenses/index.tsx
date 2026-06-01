@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { useExpenses } from '@/hooks/useAPI'
 import { useExpensesStore } from '@/stores/appStore'
-import { Plus, Trash2 } from 'lucide-react'
+import NewExpenseModal from '@/components/Expenses/NewExpenseModal'
+import Button from '@/components/UI/Button'
 
 export default function ExpensesPage() {
-  const navigate = useNavigate()
-  const { expenses, loading, fetchExpenses } = useExpenses()
+  const { expenses, loading, fetchExpenses, deleteExpense } = useExpenses()
   const { setExpenses } = useExpensesStore()
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => {
     const loadExpenses = async () => {
@@ -21,7 +22,21 @@ export default function ExpensesPage() {
     loadExpenses()
   }, [])
 
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!confirm('Are you sure you want to delete this expense?')) return
+
+    try {
+      await deleteExpense(expenseId)
+      const data = await fetchExpenses()
+      setExpenses(data || [])
+    } catch (error) {
+      console.error('Failed to delete expense:', error)
+    }
+  }
+
   const totalExpenses = expenses?.reduce((sum, exp) => sum + exp.amount, 0) || 0
+  const budget = 1000
+  const remaining = budget - totalExpenses
 
   if (loading) {
     return (
@@ -35,14 +50,27 @@ export default function ExpensesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Expenses</h2>
-        <button
-          onClick={() => navigate('/expenses/new')}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+        <Button
+          variant="primary"
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2"
         >
           <Plus size={20} />
           Add Expense
-        </button>
+        </Button>
       </div>
+
+      <NewExpenseModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => {
+          const loadExpenses = async () => {
+            const data = await fetchExpenses()
+            setExpenses(data || [])
+          }
+          loadExpenses()
+        }}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white rounded-lg p-6 border border-gray-200">
@@ -51,11 +79,21 @@ export default function ExpensesPage() {
         </div>
         <div className="bg-white rounded-lg p-6 border border-gray-200">
           <p className="text-sm text-gray-600 mb-2">Budget</p>
-          <p className="text-3xl font-bold text-gray-900">$1,000.00</p>
+          <p className="text-3xl font-bold text-gray-900">${budget.toFixed(2)}</p>
+          <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
+            <div
+              className={`h-2 rounded-full transition-all ${
+                totalExpenses > budget ? 'bg-red-600' : 'bg-green-600'
+              }`}
+              style={{ width: `${Math.min((totalExpenses / budget) * 100, 100)}%` }}
+            />
+          </div>
         </div>
         <div className="bg-white rounded-lg p-6 border border-gray-200">
           <p className="text-sm text-gray-600 mb-2">Remaining</p>
-          <p className="text-3xl font-bold text-green-600">${(1000 - totalExpenses).toFixed(2)}</p>
+          <p className={`text-3xl font-bold ${remaining >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            ${remaining.toFixed(2)}
+          </p>
         </div>
       </div>
 
@@ -87,7 +125,10 @@ export default function ExpensesPage() {
                     {new Date(expense.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right text-sm">
-                    <button className="text-red-600 hover:text-red-700">
+                    <button
+                      onClick={() => handleDeleteExpense(expense.id)}
+                      className="text-red-600 hover:text-red-700 transition-colors"
+                    >
                       <Trash2 size={18} />
                     </button>
                   </td>
@@ -100,13 +141,9 @@ export default function ExpensesPage() {
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <h3 className="text-lg font-medium text-gray-900 mb-2">No expenses yet</h3>
           <p className="text-gray-600 mb-4">Add your first expense to track spending</p>
-          <button
-            onClick={() => navigate('/expenses/new')}
-            className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-          >
-            <Plus size={20} />
+          <Button variant="primary" onClick={() => setIsModalOpen(true)}>
             Add First Expense
-          </button>
+          </Button>
         </div>
       )}
     </div>
