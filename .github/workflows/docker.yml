@@ -1,0 +1,247 @@
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api-gateway/**'
+      - 'apps/auth-service/**'
+      - 'apps/habit-service/**'
+      - 'apps/expense-service/**'
+      - 'apps/analytics-service/**'
+      - 'apps/notification-service/**'
+      - 'apps/ai-service/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to build (leave empty for all)'
+        required: false
+        type: string
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/dailyflow
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Detect which services changed
+  # ─────────────────────────────────────────────────────────────
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.filter.outputs.services }}
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api-gateway:
+              - 'apps/api-gateway/**'
+            auth-service:
+              - 'apps/auth-service/**'
+            habit-service:
+              - 'apps/habit-service/**'
+            expense-service:
+              - 'apps/expense-service/**'
+            analytics-service:
+              - 'apps/analytics-service/**'
+            notification-service:
+              - 'apps/notification-service/**'
+            ai-service:
+              - 'apps/ai-service/**'
+
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          # If workflow_dispatch with specific service, build just that one
+          if [[ -n "${{ github.event.inputs.service }}" ]]; then
+            echo "matrix={\"service\":[\"${{ github.event.inputs.service }}\"]}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Otherwise build all changed services
+          SERVICES=()
+          [[ "${{ steps.filter.outputs.api-gateway }}" == "true" ]] && SERVICES+=("api-gateway")
+          [[ "${{ steps.filter.outputs.auth-service }}" == "true" ]] && SERVICES+=("auth-service")
+          [[ "${{ steps.filter.outputs.habit-service }}" == "true" ]] && SERVICES+=("habit-service")
+          [[ "${{ steps.filter.outputs.expense-service }}" == "true" ]] && SERVICES+=("expense-service")
+          [[ "${{ steps.filter.outputs.analytics-service }}" == "true" ]] && SERVICES+=("analytics-service")
+          [[ "${{ steps.filter.outputs.notification-service }}" == "true" ]] && SERVICES+=("notification-service")
+          [[ "${{ steps.filter.outputs.ai-service }}" == "true" ]] && SERVICES+=("ai-service")
+
+          # Default: build all if nothing specific changed (e.g., docker-compose)
+          if [[ ${#SERVICES[@]} -eq 0 ]]; then
+            SERVICES=("api-gateway" "auth-service" "habit-service" "expense-service" "analytics-service" "notification-service" "ai-service")
+          fi
+
+          # Format as JSON array
+          JSON=$(printf '%s\n' "${SERVICES[@]}" | jq -R . | jq -s . | tr -d '\n')
+          echo "matrix={\"service\":$JSON}" >> $GITHUB_OUTPUT
+          echo "Building services: $JSON"
+
+  # ─────────────────────────────────────────────────────────────
+  # Build and push Docker images
+  # ─────────────────────────────────────────────────────────────
+  build-push:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.matrix != '{"service":[]}'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.title=DailyFlow ${{ matrix.service }}
+            org.opencontainers.image.description=DailyFlow microservice: ${{ matrix.service }}
+            org.opencontainers.image.vendor=DailyFlow
+
+      - name: Check for Dockerfile
+        id: check-dockerfile
+        run: |
+          if [[ -f "apps/${{ matrix.service }}/Dockerfile" ]]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No Dockerfile found for ${{ matrix.service }} — skipping"
+          fi
+
+      - name: Build and push image
+        if: steps.check-dockerfile.outputs.exists == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/${{ matrix.service }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            GIT_COMMIT=${{ github.sha }}
+            SERVICE=${{ matrix.service }}
+
+      - name: Image digest
+        if: steps.check-dockerfile.outputs.exists == 'true'
+        run: echo "Pushed image digest → ${{ steps.build-push.outputs.digest }}"
+
+  # ─────────────────────────────────────────────────────────────
+  # Generate missing Dockerfiles for Node.js services
+  # ─────────────────────────────────────────────────────────────
+  generate-dockerfiles:
+    name: Scaffold Missing Dockerfiles
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Dockerfiles for Node services
+        run: |
+          NODE_SERVICES=("api-gateway" "auth-service" "habit-service" "expense-service" "analytics-service" "notification-service")
+          for service in "${NODE_SERVICES[@]}"; do
+            DOCKERFILE="apps/$service/Dockerfile"
+            if [[ ! -f "$DOCKERFILE" ]]; then
+              echo "Creating Dockerfile for $service..."
+              cat > "$DOCKERFILE" << 'EOF'
+          FROM node:20-alpine AS base
+          RUN npm install -g pnpm@8
+          WORKDIR /app
+
+          # Install dependencies
+          FROM base AS deps
+          COPY package.json pnpm-workspace.yaml ./
+          COPY apps/SERVICE_NAME/package.json ./apps/SERVICE_NAME/
+          COPY packages/ ./packages/
+          RUN pnpm install --frozen-lockfile --filter=@dailyflow/SERVICE_NAME...
+
+          # Build
+          FROM base AS builder
+          COPY --from=deps /app/node_modules ./node_modules
+          COPY . .
+          RUN pnpm --filter=@dailyflow/SERVICE_NAME build
+
+          # Production image
+          FROM node:20-alpine AS runner
+          WORKDIR /app
+          ENV NODE_ENV=production
+
+          COPY --from=builder /app/apps/SERVICE_NAME/dist ./dist
+          COPY --from=builder /app/apps/SERVICE_NAME/package.json ./package.json
+          COPY --from=deps /app/apps/SERVICE_NAME/node_modules ./node_modules
+
+          EXPOSE 3000
+          HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+            CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
+          CMD ["node", "dist/main.js"]
+          EOF
+              sed -i "s/SERVICE_NAME/$service/g" "$DOCKERFILE"
+              echo "✅ Created $DOCKERFILE"
+            fi
+          done
+
+  # ─────────────────────────────────────────────────────────────
+  # Summary
+  # ─────────────────────────────────────────────────────────────
+  summary:
+    name: Docker Build Summary
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: always()
+    steps:
+      - name: Write job summary
+        run: |
+          echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`ghcr.io/${{ env.IMAGE_PREFIX }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.build-push.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull images" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-api-gateway:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-auth-service:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-habit-service:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
