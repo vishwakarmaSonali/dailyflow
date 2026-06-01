@@ -12,6 +12,7 @@
     "lint:fix": "eslint \"**/*.{ts,tsx,js}\" --fix --ignore-pattern=\"node_modules/\"",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
+    "ai:dev": "cd apps/ai-service && poetry install && poetry run python -m uvicorn src.main:app --reload --port 8000",
     "prepare": "husky install"
   },
   "keywords": [

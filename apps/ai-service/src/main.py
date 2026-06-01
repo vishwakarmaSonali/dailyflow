@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.application.event_handlers import ExpenseEventHandler, HabitEventHandler
 from src.domain.anomaly_detector import AnomalyDetector
+from src.domain.events import EventType
 from src.domain.insights_engine import InsightsEngine
 from src.infrastructure.config import get_settings
 from src.infrastructure.database import CacheRepository
@@ -16,6 +17,7 @@ from src.infrastructure.event_publisher import EventPublisher
 from src.infrastructure.http.routes import create_router
 from src.infrastructure.redis import RedisClient
 from src.infrastructure.redis.event_consumer import EventConsumer
+from src.infrastructure.workers import WorkerPool, OCRWorker, InsightsWorker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,15 +32,18 @@ event_consumer: EventConsumer | None = None
 event_publisher: EventPublisher | None = None
 cache_repository: CacheRepository | None = None
 event_consumer_task: asyncio.Task | None = None
+ocr_worker_pool: WorkerPool | None = None
+insights_worker_pool: WorkerPool | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan context manager.
     
-    Handles startup and shutdown events, including event consumer.
+    Handles startup and shutdown events, including event consumer and workers.
     """
-    global redis_client, event_consumer, event_publisher, cache_repository, event_consumer_task
+    global redis_client, event_consumer, event_publisher, cache_repository
+    global event_consumer_task, ocr_worker_pool, insights_worker_pool
 
     # Startup
     logger.info(f"Starting AI Service on port {settings.port}")
@@ -67,15 +72,15 @@ async def lifespan(app: FastAPI):
         )
 
         event_consumer.register_handler(
-            event_type="expense:created",
+            event_type=EventType.EXPENSE_CREATED,
             handler=expense_handler.handle_expense_created,
         )
         event_consumer.register_handler(
-            event_type="habit:logged",
+            event_type=EventType.HABIT_LOGGED,
             handler=habit_handler.handle_habit_logged,
         )
         event_consumer.register_handler(
-            event_type="habit:milestone:reached",
+            event_type=EventType.HABIT_MILESTONE_REACHED,
             handler=habit_handler.handle_habit_milestone,
         )
 
@@ -83,8 +88,38 @@ async def lifespan(app: FastAPI):
         event_consumer_task = asyncio.create_task(event_consumer.start())
         logger.info("Event consumer started")
 
+        # Initialize and start worker pools for Phase 5+
+        ocr_worker_factory = lambda worker_id: OCRWorker(
+            worker_id=worker_id,
+            cache_repository=cache_repository,
+            event_publisher=event_publisher,
+            redis_client=redis_client,
+            settings=settings,
+            timeout_seconds=30,
+        )
+        ocr_worker_pool = WorkerPool(
+            worker_factory=ocr_worker_factory, num_workers=5
+        )
+        await ocr_worker_pool.start()
+        logger.info("OCR worker pool started with 5 workers")
+
+        insights_engine = InsightsEngine(settings.insights_generation_days)
+        insights_worker_factory = lambda worker_id: InsightsWorker(
+            worker_id=worker_id,
+            cache_repository=cache_repository,
+            event_publisher=event_publisher,
+            insights_engine=insights_engine,
+            settings=settings,
+            timeout_seconds=30,
+        )
+        insights_worker_pool = WorkerPool(
+            worker_factory=insights_worker_factory, num_workers=5
+        )
+        await insights_worker_pool.start()
+        logger.info("Insights worker pool started with 5 workers")
+
     except Exception as e:
-        logger.error(f"Failed to start event consumer: {str(e)}")
+        logger.error(f"Failed to start AI Service: {str(e)}")
 
     yield
 
@@ -92,6 +127,14 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down AI Service")
 
     try:
+        if ocr_worker_pool:
+            await ocr_worker_pool.stop()
+            logger.info("OCR worker pool stopped")
+
+        if insights_worker_pool:
+            await insights_worker_pool.stop()
+            logger.info("Insights worker pool stopped")
+
         if event_consumer:
             await event_consumer.stop()
         if event_consumer_task:
@@ -102,7 +145,7 @@ async def lifespan(app: FastAPI):
                 pass
         if redis_client:
             await redis_client.disconnect()
-        logger.info("Event consumer stopped")
+        logger.info("AI Service shutdown complete")
     except Exception as e:
         logger.error(f"Error during shutdown: {str(e)}")
 
@@ -143,6 +186,77 @@ def create_app() -> FastAPI:
     async def root_health() -> dict:
         """Root health check."""
         return {"status": "healthy", "service": "ai-service"}
+
+    @app.get("/health/workers")
+    async def worker_health() -> dict:
+        """Get worker pool health statistics.
+        
+        Returns:
+            Dictionary with OCR and Insights worker pool stats
+        """
+        ocr_stats = (
+            ocr_worker_pool.get_stats() if ocr_worker_pool else {}
+        )
+        insights_stats = (
+            insights_worker_pool.get_stats() if insights_worker_pool else {}
+        )
+        return {
+            "status": "healthy",
+            "service": "ai-service",
+            "ocr_worker_pool": ocr_stats,
+            "insights_worker_pool": insights_stats,
+        }
+
+    @app.post("/workers/ocr/enqueue")
+    async def enqueue_ocr_task(task_data: dict) -> dict:
+        """Enqueue an OCR processing task.
+        
+        Args:
+            task_data: Task data with expense_id, user_id, image_data, etc.
+            
+        Returns:
+            Status confirmation
+        """
+        if not ocr_worker_pool or not ocr_worker_pool.is_running:
+            return {"status": "error", "message": "OCR worker pool not running"}
+
+        try:
+            await ocr_worker_pool.enqueue_task(task_data)
+            return {
+                "status": "success",
+                "message": "Task enqueued for OCR processing",
+                "queue_size": ocr_worker_pool.task_queue.qsize(),
+            }
+        except Exception as e:
+            logger.error(f"Failed to enqueue OCR task: {str(e)}")
+            return {"status": "error", "message": str(e)}
+
+    @app.post("/workers/insights/enqueue")
+    async def enqueue_insights_task(task_data: dict) -> dict:
+        """Enqueue an insights generation task.
+        
+        Args:
+            task_data: Task data with user_id, insight_type, data, etc.
+            
+        Returns:
+            Status confirmation
+        """
+        if not insights_worker_pool or not insights_worker_pool.is_running:
+            return {
+                "status": "error",
+                "message": "Insights worker pool not running",
+            }
+
+        try:
+            await insights_worker_pool.enqueue_task(task_data)
+            return {
+                "status": "success",
+                "message": "Task enqueued for insights generation",
+                "queue_size": insights_worker_pool.task_queue.qsize(),
+            }
+        except Exception as e:
+            logger.error(f"Failed to enqueue insights task: {str(e)}")
+            return {"status": "error", "message": str(e)}
 
     return app
 

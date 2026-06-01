@@ -1,0 +1,30 @@
+{
+  "name": "@dailyflow/api-client",
+  "version": "1.0.0",
+  "description": "Shared API client for DailyFlow mobile and web apps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc && node build.js",
+    "dev": "tsc --watch",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "esbuild": "^0.19.0"
+  },
+  "private": false
+}

@@ -51,6 +51,11 @@ pnpm --filter=@dailyflow/api-gateway run dev
 # Start individual services
 pnpm --filter=@dailyflow/habit-service run dev
 pnpm --filter=@dailyflow/expense-service run dev
+
+# Start the AI service
+cd apps/ai-service
+poetry install
+poetry run python -m uvicorn src.main:app --reload --port 8000
 ```
 
 ## 📚 Documentation
@@ -151,4 +156,4 @@ Created by the DailyFlow team.
 
 ---
 
-**Status**: 🚀 Phase 1 - Repository & Monorepo Setup (In Progress)
+**Status**: 🚀 Phase 4 - Additional Microservices Complete

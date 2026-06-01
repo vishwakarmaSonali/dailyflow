@@ -36,6 +36,30 @@ services:
       timeout: 5s
       retries: 5
 
+  ai-service:
+    build:
+      context: ./apps/ai-service
+    container_name: dailyflow-ai-service
+    environment:
+      - PORT=8000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - OPENAI_VISION_MODEL=${OPENAI_VISION_MODEL}
+      - OPENAI_WHISPER_MODEL=${OPENAI_WHISPER_MODEL}
+      - REDIS_URL=${REDIS_URL}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL:-http://localhost:3001}
+      - HABIT_SERVICE_URL=${HABIT_SERVICE_URL:-http://localhost:3002}
+      - EXPENSE_SERVICE_URL=${EXPENSE_SERVICE_URL:-http://localhost:3003}
+      - ANALYTICS_SERVICE_URL=${ANALYTICS_SERVICE_URL:-http://localhost:3004}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    networks:
+      - dailyflow
+
 networks:
   dailyflow:
     driver: bridge

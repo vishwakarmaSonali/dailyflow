@@ -1,14 +1,15 @@
 # DailyFlow Setup Guide
 
-## Phase 1: Repository & Monorepo Setup ✅ (CURRENT)
+## Phase 4: Additional Microservices ✅ (CURRENT)
 
 ### What We've Done
-- ✅ Initialized Git repository
-- ✅ Created monorepo structure (pnpm workspaces)
-- ✅ Set up `.gitignore`, `package.json`, `.env.example`
-- ✅ Created comprehensive README.md
+- ✅ Initialized Git repository and monorepo structure
+- ✅ Configured shared tooling (ESLint, Prettier, Jest, Husky, Commitlint)
+- ✅ Built API Gateway and Auth Service skeletons
+- ✅ Built Habit, Expense, Analytics, and Notification service scaffolding
+- ✅ Created service READMEs and architecture documentation
 
-### Next: Phase 2 - Shared Configuration & Tooling
+### Next: Phase 5 - AI Service and Frontend
 
 ## Installation & Development
 
@@ -54,6 +55,11 @@ pnpm dev
 
 # Option B: Start individual service
 pnpm --filter=@dailyflow/api-gateway run dev
+
+# Option C: Start AI Service
+cd apps/ai-service
+poetry install
+poetry run python -m uvicorn src.main:app --reload --port 8000
 ```
 
 ## Environment Variables
@@ -62,7 +68,9 @@ pnpm --filter=@dailyflow/api-gateway run dev
 - `DATABASE_URL_*` - Each service needs its own PostgreSQL database
 - `JWT_SECRET` - For Auth Service (use anything locally, proper value in production)
 - `REDIS_URL` - For BullMQ event bus
+- `AI_SERVICE_URL` - AI Service base URL for gateway proxying
 - `OPENAI_API_KEY` - For AI Service (optional for initial development)
+- `OPENAI_MODEL`, `OPENAI_VISION_MODEL`, `OPENAI_WHISPER_MODEL` - OpenAI models used by AI Service
 
 ### Production Considerations
 - Never commit `.env` (use `.env.example` for template)
@@ -120,10 +128,10 @@ kill -9 <PID>
 
 ## Next Steps
 
-1. **Phase 2**: Set up ESLint, Prettier, Husky, Commitlint
-2. **Phase 3**: Create API Gateway skeleton
-3. **Phase 4**: Create Auth Service with Clean Architecture
-4. **Phase 5+**: Additional services and frontend
+1. **Phase 5**: Create Python AI Service with FastAPI, OCR, and GPT insights
+2. **Phase 6**: Initialize Expo mobile app and React dashboard
+3. **Run Prisma migrations** for all services and verify database connectivity
+4. **Test end-to-end event flow** from Habit Service through Analytics/Notification
 
 ---
 

@@ -47,7 +47,7 @@ class EventConsumer:
             logger.info("Event consumer disconnected from Redis")
 
     def register_handler(
-        self, event_type: EventType, handler: Callable
+        self, event_type: EventType | str, handler: Callable
     ) -> None:
         """Register event handler.
         
@@ -55,8 +55,9 @@ class EventConsumer:
             event_type: Type of event to handle
             handler: Async callable to handle event
         """
-        self.handlers[event_type.value] = handler
-        logger.info(f"Registered handler for {event_type.value}")
+        event_key = event_type.value if isinstance(event_type, EventType) else str(event_type)
+        self.handlers[event_key] = handler
+        logger.info(f"Registered handler for {event_key}")
 
     async def start(self) -> None:
         """Start consuming events.
@@ -124,7 +125,7 @@ class EventConsumer:
             # TODO: Add to dead letter queue for retry
 
     async def publish_event(self, event: DomainEvent) -> None:
-        """Publish event to outgoing queue.
+        """Publish event to outgoing channel.
         
         Args:
             event: Event to publish
@@ -132,6 +133,6 @@ class EventConsumer:
         if not self.redis_client:
             raise RuntimeError("Event consumer not connected")
 
-        queue_name = f"ai:{event.event_type.value}"
-        await self.redis_client.rpush(queue_name, event.to_json())
-        logger.info(f"Published event to {queue_name}")
+        channel_name = f"ai:{event.event_type.value}"
+        await self.redis_client.publish(channel_name, event.to_json())
+        logger.info(f"Published event to {channel_name}")
